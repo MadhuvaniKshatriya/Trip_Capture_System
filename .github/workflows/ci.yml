@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -57,3 +57,4 @@ jobs:
         run: |
           gcloud builds submit --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/trip-admin:$(git rev-parse --short HEAD)
           gcloud run deploy trip-admin --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/trip-admin:$(git rev-parse --short HEAD) --region us-central1 --allow-unauthenticated
+
