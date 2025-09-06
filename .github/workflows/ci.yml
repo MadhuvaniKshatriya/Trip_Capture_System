@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [ backend, admin-web ]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: ${{ matrix.project }}/package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Lint (if present)
+        run: npm run lint --if-present
+      - name: Test (if present)
+        run: npm test --if-present
+      - name: Build (if present)
+        run: npm run build --if-present
+
+  deploy-gcp:
+    # only on push to main AND only if the required secrets exist
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.GCP_SA_KEY != '' && secrets.GCP_PROJECT_ID != ''
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+      - name: Deploy backend (Cloud Run)
+        working-directory: backend
+        shell: bash
+        run: |
+          gcloud builds submit --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/trip-backend:$(git rev-parse --short HEAD)
+          gcloud run deploy trip-backend --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/trip-backend:$(git rev-parse --short HEAD) --region us-central1 --allow-unauthenticated
+      - name: Deploy admin-web (Cloud Run)
+        working-directory: admin-web
+        shell: bash
+        run: |
+          gcloud builds submit --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/trip-admin:$(git rev-parse --short HEAD)
+          gcloud run deploy trip-admin --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/trip-admin:$(git rev-parse --short HEAD) --region us-central1 --allow-unauthenticated
